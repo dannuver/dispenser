@@ -1,6 +1,7 @@
 // src/App.jsx
 import React, { useState, useEffect } from 'react';
 import { ChakraProvider, extendTheme, Box, Container, VStack, Heading, Text, Link, HStack, Image } from '@chakra-ui/react';
+// Todas las importaciones de componentes ahora apuntan correctamente a la carpeta 'components/'
 import OperationSelector from './components/OperationSelector';
 import WalletConnect from './components/WalletConnect';
 import AxelarBridge from './components/AxelarBridge';
