@@ -58,7 +58,7 @@ function App() {
     setSelectedOperation(null);
     setWalletConnectedEVM(false); // Resetear EVM también si se oculta
     setAmountToBridge(null);
-    setBridgeComplete(false);
+    setBridgeComplete(false); // Resetear el estado del puenteo al volver
     // Limpiar parámetros de URL si estamos volviendo de un callback de SEP-24
     if (window.location.search) {
       window.history.replaceState({}, document.title, window.location.pathname);
@@ -110,14 +110,15 @@ function App() {
     // Mostramos las opciones de operación de PuntoRed.
     currentComponent = <OperationSelector setSelectedOperation={setSelectedOperation} />;
     showGoBackButton = true; // Permitir volver a la pantalla de conexión si el usuario lo desea
-  } else if (!bridgeComplete) {
-    // Caso 4: Operación seleccionada, pero el puenteo de fondos no está completo (simulado)
-    // Este paso es un requisito previo para tener los fondos en Stellar.
+  } else if (selectedOperation === 'Puenteo de Fondos') {
+    // Caso 4: El usuario ha seleccionado la opción de Puenteo de Fondos
+    // Dirigimos al usuario al componente AxelarBridge.
     currentComponent = (
       <AxelarBridge
         onBridgeComplete={(amount) => {
           setBridgeComplete(true);
           setAmountToBridge(amount);
+          setSelectedOperation(null); // Opcional: Volver a la selección de operación después del puenteo
         }}
         token="USDC"
         stellarAddress={stellarAddress}
@@ -125,13 +126,13 @@ function App() {
     );
     showGoBackButton = true;
   } else {
-    // Caso 5: Todos los pasos previos completados (autenticación, selección, puenteo)
+    // Caso 5: Autenticación Stellar completa y se ha seleccionado una operación (que no es puenteo)
     // Mostramos el componente de retiro para completar la operación con el ancla.
     currentComponent = (
       <PuntoRedWithdraw
         operationType={selectedOperation}
         stellarAddress={stellarAddress}
-        amount={amountToBridge}
+        amount={amountToBridge} // El monto puenteado se pasa aquí si es relevante para el retiro
         jwtToken={jwtToken}
       />
     );

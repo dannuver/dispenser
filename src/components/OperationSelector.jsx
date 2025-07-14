@@ -1,7 +1,7 @@
 // src/components/OperationSelector.jsx
 import React from 'react';
 import { VStack, Button, Text, Heading, SimpleGrid, Icon } from '@chakra-ui/react';
-import { FaMoneyBillWave, FaMobileAlt, FaFileInvoiceDollar, FaWallet, FaReceipt } from 'react-icons/fa'; // Importar iconos
+import { FaMoneyBillWave, FaMobileAlt, FaFileInvoiceDollar, FaWallet, FaReceipt, FaExchangeAlt } from 'react-icons/fa'; // Importar iconos, incluyendo FaExchangeAlt para el puenteo
 
 function OperationSelector({ setSelectedOperation }) {
   // Definimos las operaciones con sus iconos y un esquema de color sugerido
@@ -10,7 +10,8 @@ function OperationSelector({ setSelectedOperation }) {
     { name: 'Recargar Nequi/Daviplata', icon: FaWallet, colorScheme: 'purple' },
     { name: 'Recarga a celulares', icon: FaMobileAlt, colorScheme: 'blue' },
     { name: 'Pago de facturas', icon: FaFileInvoiceDollar, colorScheme: 'orange' },
-    { name: 'Pago de recibos', icon: FaReceipt, colorScheme: 'red' }, // Añadido si aplica
+    { name: 'Pago de recibos', icon: FaReceipt, colorScheme: 'red' },
+    { name: 'Puenteo de Fondos', icon: FaExchangeAlt, colorScheme: 'teal' }, // Nueva opción para el puenteo
   ];
 
   return (
@@ -19,7 +20,7 @@ function OperationSelector({ setSelectedOperation }) {
         ¿Qué operación deseas realizar?
       </Heading>
       <Text fontSize="lg" color="gray.700" textAlign="center">
-        Selecciona un servicio de PuntoRed para iniciar tu transacción.
+        Selecciona un servicio de PuntoRed o una opción de puenteo.
       </Text>
 
       <SimpleGrid columns={{ base: 1, md: 2 }} spacing={6} width="100%" maxWidth="lg">
