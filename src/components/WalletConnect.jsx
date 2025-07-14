@@ -1,124 +1,88 @@
 // src/components/WalletConnect.jsx
-import { useAccount, useConnect, useDisconnect } from 'wagmi';
-import { injected } from 'wagmi/connectors';
-import { getPublicKey, isAllowed } from "@stellar/freighter-api";
-import React, { useEffect, useState } from 'react';
-import { Button, VStack, Text, Box, Spinner, useToast, Icon, Heading, Flex, Spacer } from '@chakra-ui/react';
-import { FaWallet, FaEthereum, FaLink, FaCheckCircle, FaTimesCircle, FaAngleRight } from 'react-icons/fa';
+import React from 'react';
+import { VStack, Text, Box } from '@chakra-ui/react';
+// Ya no necesitamos wagmi si ocultamos EVM por ahora
+// import { useConnect, useAccount, useDisconnect } from 'wagmi';
+// import { injected } from 'wagmi/connectors';
+import StellarAuth from './StellarAuth'; // Importar el componente de autenticación Stellar
 
-export function WalletConnect({ onEVMConnect, onStellarConnect, currentStellarAddress }) {
-  const { address: evmAddress, isConnected: isEVMConnected } = useAccount();
-  const { connect } = useConnect();
-  const { disconnect } = useDisconnect();
+function WalletConnect({ onStellarAuthSuccess, currentStellarAddress }) {
+  // Las props de EVM (onEVMConnect) ya no se usan directamente aquí si ocultamos EVM
+  // const { connect, connectors, status: evmConnectStatus, error: evmConnectError } = useConnect();
+  // const { address: evmAddress, isConnected: isEVMConnected, status: evmAccountStatus } = useAccount();
+  // const { disconnect } = useDisconnect();
+  // const toast = useToast();
 
-  const [stellarAddress, setStellarAddress] = useState(currentStellarAddress);
-  const [isConnectingStellar, setIsConnectingStellar] = useState(false);
+  // Efecto para notificar al padre sobre la conexión EVM (comentado)
+  // useEffect(() => {
+  //   onEVMConnect(isEVMConnected);
+  //   if (isEVMConnected && evmAddress) {
+  //     toast({
+  //       title: 'Wallet EVM conectada',
+  //       description: `Dirección: ${evmAddress}`,
+  //       status: 'success',
+  //       duration: 3000,
+  //       isClosable: true,
+  //     });
+  //   }
+  // }, [isEVMConnected, evmAddress, onEVMConnect, toast]);
 
-  const toast = useToast();
-
-  useEffect(() => {
-    onEVMConnect(isEVMConnected);
-  }, [isEVMConnected, onEVMConnect]);
-
-  useEffect(() => {
-    setStellarAddress(currentStellarAddress);
-  }, [currentStellarAddress]);
-
-  const handleConnectStellar = async () => {
-    setIsConnectingStellar(true);
-    try {
-      const allowed = await isAllowed();
-      if (!allowed) {
-        toast({
-          title: 'Permiso para Freighter',
-          description: 'Por favor, abre la extensión de Freighter y permite la conexión.',
-          status: 'info',
-          duration: 5000,
-          isClosable: true,
-          position: 'top', // Mensaje en la parte superior
-        });
-        await getPublicKey();
-      }
-
-      const publicKey = await getPublicKey();
-      if (publicKey) {
-        setStellarAddress(publicKey);
-        onStellarConnect(publicKey);
-        toast({
-          title: 'Wallet Stellar Conectada',
-          description: `Conectado con Freighter: ${publicKey.substring(0, 4)}...${publicKey.substring(publicKey.length - 4)}`,
-          status: 'success',
-          duration: 3000,
-          isClosable: true,
-          position: 'top',
-        });
-      } else {
-        throw new Error("No se pudo obtener la clave pública de Freighter.");
-      }
-    } catch (error) {
-      console.error("Error conectando wallet Stellar:", error);
-      toast({
-        title: 'Error al conectar Stellar',
-        description: 'Asegúrate de tener Freighter instalado y activo. ' + (error.message || ''),
-        status: 'error',
-        duration: 7000,
-        isClosable: true,
-        position: 'top',
-      });
-    } finally {
-      setIsConnectingStellar(false);
-    }
-  };
+  // Manejar errores de conexión EVM (comentado)
+  // useEffect(() => {
+  //   if (evmConnectError) {
+  //     toast({
+  //       title: 'Error de conexión EVM',
+  //       description: evmConnectError.message,
+  //       status: 'error',
+  //       duration: 5000,
+  //       isClosable: true,
+  //     });
+  //   }
+  // }, [evmConnectError, toast]);
 
   return (
-    <VStack spacing={6} p={6} shadow="lg" borderWidth="1px" borderRadius="xl" width="100%" maxWidth="md" mx="auto" bg="white">
-      <Heading as="h3" size="lg" mb={4} color="stellarBlue.700">Paso 1: Conecta tus Wallets</Heading>
+    <VStack spacing={6} p={6} borderWidth="1px" borderRadius="lg" w="full" boxShadow="md">
+      <Text fontSize="xl" fontWeight="bold">Paso 1: Conecta y Autentica tu Wallet Stellar</Text>
 
-      {/* Conexión EVM Wallet (MetaMask) */}
-      <Box width="100%">
-        <Text mb={2} fontWeight="semibold" fontSize="md">Wallet EVM (ej. MetaMask):</Text>
-        {isEVMConnected ? (
-          <Flex p={4} bg="green.50" borderRadius="lg" alignItems="center" justifyContent="space-between" boxShadow="sm">
-            <Icon as={FaCheckCircle} color="green.500" w={5} h={5} mr={3} />
-            <Text flex="1" fontSize="sm" color="green.700" fontWeight="medium">
-              Conectada: {evmAddress ? `${evmAddress.substring(0, 6)}...${evmAddress.substring(evmAddress.length - 4)}` : ''}
-            </Text>
-            <Button size="sm" colorScheme="red" onClick={() => disconnect()} variant="ghost">Desconectar</Button>
-          </Flex>
-        ) : (
-          <Button leftIcon={<FaEthereum />} colorScheme="blue" onClick={() => connect({ connector: injected() })} width="100%" size="lg" py={6} borderRadius="lg" boxShadow="md" _hover={{ boxShadow: "lg" }}>
-            Conectar Wallet EVM
-          </Button>
-        )}
+      {/* Sección de Conexión EVM (ocultada temporalmente) */}
+      {/*
+      <Box w="full" p={4} borderWidth="1px" borderRadius="md">
+        <HStack justifyContent="space-between" alignItems="center" w="full">
+          <VStack align="flex-start" spacing={1}>
+            <Text fontWeight="semibold">Wallet EVM (MetaMask)</Text>
+            {isEVMConnected && evmAddress ? (
+              <Text fontSize="sm" color="green.600">
+                Conectada: {evmAddress.substring(0, 6)}...{evmAddress.substring(evmAddress.length - 4)}
+              </Text>
+            ) : (
+              <Text fontSize="sm" color="orange.500">No conectada</Text>
+            )}
+          </VStack>
+          {isEVMConnected ? (
+            <Button onClick={() => disconnect()} colorScheme="red" size="sm">
+              Desconectar
+            </Button>
+          ) : (
+            <Button
+              onClick={() => connect({ connector: injected() })}
+              isLoading={evmConnectStatus === 'pending'}
+              isDisabled={evmConnectStatus === 'connecting'}
+              colorScheme="purple"
+              size="sm"
+            >
+              {evmConnectStatus === 'pending' ? <Spinner size="sm" /> : 'Conectar MetaMask'}
+            </Button>
+          )}
+        </HStack>
       </Box>
+      */}
 
-      {/* Conexión Stellar Wallet (Freighter) */}
-      <Box width="100%">
-        <Text mb={2} fontWeight="semibold" fontSize="md">Wallet Stellar (Freighter):</Text>
-        {stellarAddress ? (
-          <Flex p={4} bg="green.50" borderRadius="lg" alignItems="center" justifyContent="space-between" boxShadow="sm">
-            <Icon as={FaCheckCircle} color="green.500" w={5} h={5} mr={3} />
-            <Text flex="1" fontSize="sm" color="green.700" fontWeight="medium">
-              Conectada: {stellarAddress ? `${stellarAddress.substring(0, 6)}...${stellarAddress.substring(stellarAddress.length - 4)}` : ''}
-            </Text>
-            <Button size="sm" colorScheme="red" onClick={() => { setStellarAddress(null); onStellarConnect(null); }} variant="ghost">Desconectar</Button>
-          </Flex>
-        ) : (
-          <Button
-            leftIcon={<FaLink />}
-            colorScheme="blue"
-            onClick={handleConnectStellar}
-            isLoading={isConnectingStellar}
-            loadingText="Conectando..."
-            width="100%"
-            size="lg" py={6} borderRadius="lg" boxShadow="md" _hover={{ boxShadow: "lg" }}
-          >
-            Conectar Wallet Stellar
-          </Button>
-        )}
-      </Box>
+      {/* Sección de Autenticación Stellar (usando StellarAuth) */}
+      <StellarAuth onAuthSuccess={onStellarAuthSuccess} currentStellarAddress={currentStellarAddress} />
 
-     
+      <Text fontSize="sm" color="gray.500" textAlign="center">
+        La autenticación con tu Stellar Wallet es necesaria para las operaciones.
+      </Text>
     </VStack>
   );
 }

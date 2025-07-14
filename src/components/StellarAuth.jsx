@@ -1,7 +1,7 @@
 // src/components/StellarAuth.jsx
 import React, { useState } from 'react';
 import { Button, VStack, Text, useToast, Spinner, Box, HStack } from '@chakra-ui/react';
-import { getPublicKey, signTransaction } from '@stellar/freighter-api';
+import { getPublicKey, signTransaction } from '@stellar/freighter-api'; // Importación correcta
 import { Networks } from 'stellar-sdk'; // Importamos Networks de stellar-sdk
 
 // ¡IMPORTANTE! Reemplaza con el dominio real de PuntoRed.
@@ -44,10 +44,17 @@ function StellarAuth({ onAuthSuccess, currentStellarAddress }) {
   const authenticateWithStellar = async () => {
     setLoading(true);
     try {
+      // *** INICIO DE LA DEPURACIÓN ***
+      console.log('Tipo de getPublicKey:', typeof getPublicKey);
+      if (typeof getPublicKey !== 'function') {
+        throw new Error('getPublicKey is not a function. Check Freighter API import and installation.');
+      }
+      // *** FIN DE LA DEPURACIÓN ***
+
       // 1. Obtener la clave pública de la wallet Stellar (Freighter)
       const publicKey = await getPublicKey();
       if (!publicKey) {
-        throw new Error('No Stellar wallet connected or public key not available.');
+        throw new Error('No Stellar wallet connected or public key not available. Ensure Freighter is active.');
       }
 
       // 2. Descubrir el WEB_AUTH_ENDPOINT desde stellar.toml
@@ -57,7 +64,7 @@ function StellarAuth({ onAuthSuccess, currentStellarAddress }) {
       // 3. Obtener la transacción de desafío (challenge transaction) del ancla (SEP-10 /auth endpoint)
       const authInfoResponse = await fetch(`${webAuthEndpoint}?account=${publicKey}`);
       if (!authInfoResponse.ok) {
-        const errorText = await authInfoResponse.text();
+        const errorText = await authInfoResponse.text(); // Leer el cuerpo del error
         throw new Error(`Error fetching auth challenge: ${authInfoResponse.status} - ${errorText}`);
       }
       const authInfo = await authInfoResponse.json();
@@ -76,7 +83,7 @@ function StellarAuth({ onAuthSuccess, currentStellarAddress }) {
       });
 
       if (!tokenResponse.ok) {
-        const errorText = await tokenResponse.text();
+        const errorText = await tokenResponse.text(); // Leer el cuerpo del error
         throw new Error(`Error getting JWT: ${tokenResponse.status} - ${errorText}`);
       }
       const tokenData = await tokenResponse.json();
