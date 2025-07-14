@@ -53,7 +53,7 @@ function App() {
   const [amountToBridge, setAmountToBridge] = useState(null);
   const [bridgeComplete, setBridgeComplete] = useState(false);
 
-  // Función para resetear todos los estados y volver a la selección de operación
+  // Función para resetear todos los estados relacionados con el flujo de operación
   const handleGoBack = () => {
     setSelectedOperation(null);
     setWalletConnectedEVM(false); // Resetear EVM también si se oculta
@@ -63,6 +63,21 @@ function App() {
     if (window.location.search) {
       window.history.replaceState({}, document.title, window.location.pathname);
     }
+  };
+
+  // Nueva función para desconectar la billetera Stellar
+  const handleStellarDisconnect = () => {
+    localStorage.removeItem('stellarJwt');
+    localStorage.removeItem('stellarAddress');
+    localStorage.removeItem('selectedWalletId'); // Limpiar también el ID de la wallet seleccionada por StellarWalletsKit
+    setJwtToken(null);
+    setStellarAddress(null);
+    // Resetear también los estados de operación para volver a la pantalla de conexión
+    setSelectedOperation(null);
+    setWalletConnectedEVM(false);
+    setAmountToBridge(null);
+    setBridgeComplete(false);
+    // Opcional: Mostrar un toast de desconexión
   };
 
   let currentComponent;
@@ -170,18 +185,31 @@ function App() {
                 </Text>
               </Box>
 
-              {showGoBackButton && (
-                <Button
-                  onClick={handleGoBack}
-                  variant="outline"
-                  colorScheme="gray"
-                  alignSelf="flex-start"
-                  mb={4}
-                  leftIcon={<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-arrow-left"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>}
-                >
-                  Volver
-                </Button>
-              )}
+              {/* Contenedor para los botones de Volver y Desconectar */}
+              <HStack justifyContent="space-between" width="100%">
+                {showGoBackButton && (
+                  <Button
+                    onClick={handleGoBack}
+                    variant="outline"
+                    colorScheme="gray"
+                    leftIcon={<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-arrow-left"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>}
+                  >
+                    Volver
+                  </Button>
+                )}
+
+                {/* Botón de Desconexión de Billetera Stellar - Visible solo si está autenticado */}
+                {stellarAddress && jwtToken && (
+                  <Button
+                    onClick={handleStellarDisconnect}
+                    colorScheme="red"
+                    variant="outline"
+                    leftIcon={<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-log-out"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>}
+                  >
+                    Desconectar Wallet Stellar
+                  </Button>
+                )}
+              </HStack>
 
               {currentComponent}
 
