@@ -118,14 +118,7 @@ export function WalletConnect({ onEVMConnect, onStellarConnect, currentStellarAd
         )}
       </Box>
 
-      {(!isEVMConnected || !stellarAddress) && (
-        <Flex p={3} bg="orange.50" borderRadius="lg" width="100%" alignItems="center" boxShadow="sm">
-          <Icon as={FaTimesCircle} color="orange.500" w={5} h={5} mr={3} />
-          <Text color="orange.700" fontSize="sm" fontWeight="medium">
-            Conecta ambas wallets para continuar con la operación.
-          </Text>
-        </Flex>
-      )}
+     
     </VStack>
   );
 }

@@ -1,11 +1,13 @@
 // src/App.jsx
 import React, { useState, useEffect } from 'react';
-import { ChakraProvider, extendTheme, Box, Container, VStack, Heading, Text, Link, HStack, Image } from '@chakra-ui/react';
-// Todas las importaciones de componentes ahora apuntan correctamente a la carpeta 'components/'
-import OperationSelector from './components/OperationSelector';
-import WalletConnect from './components/WalletConnect';
-import AxelarBridge from './components/AxelarBridge';
-import PuntoRedWithdraw from './components/PuntoRedWithdraw';
+import { ChakraProvider, extendTheme, Box, Container, VStack, Heading, Text, Link, HStack, Image, Button } from '@chakra-ui/react';
+// Rutas de importación corregidas para cuando App.jsx está en src/ (estructura estándar)
+import OperationSelector from './components/OperationSelector'; // Ahora sí necesita './components/'
+import WalletConnect from './components/WalletConnect'; // Ahora sí necesita './components/'
+import AxelarBridge from './components/AxelarBridge'; // Ahora sí necesita './components/'
+import PuntoRedWithdraw from './components/PuntoRedWithdraw'; // Ahora sí necesita './components/'
+import StellarAuth from './components/StellarAuth'; // Ahora sí necesita './components/'
+
 import { WagmiProvider } from 'wagmi';
 import { polygon, mainnet, arbitrum } from 'wagmi/chains';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -45,20 +47,63 @@ const theme = extendTheme({
 function App() {
   const [selectedOperation, setSelectedOperation] = useState(null);
   const [walletConnectedEVM, setWalletConnectedEVM] = useState(false);
-  const [stellarAddress, setStellarAddress] = useState(null);
+  // Estados para la dirección Stellar y el JWT, intentando cargar desde localStorage
+  const [stellarAddress, setStellarAddress] = useState(localStorage.getItem('stellarAddress') || null);
+  const [jwtToken, setJwtToken] = useState(localStorage.getItem('stellarJwt') || null);
   const [amountToBridge, setAmountToBridge] = useState(null);
   const [bridgeComplete, setBridgeComplete] = useState(false);
 
-  let currentComponent;
+  // Función para resetear todos los estados y volver a la selección de operación
+  const handleGoBack = () => {
+    setSelectedOperation(null);
+    setWalletConnectedEVM(false);
+    // No reseteamos stellarAddress y jwtToken aquí, ya que la autenticación es persistente
+    setAmountToBridge(null);
+    setBridgeComplete(false);
+    // Limpiar parámetros de URL si estamos volviendo de un callback de SEP-24
+    if (window.location.search) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  };
 
-  if (!selectedOperation) {
+  let currentComponent;
+  let showGoBackButton = true; // Controla la visibilidad del botón "Volver"
+
+  // Verificar si estamos en un callback de SEP-24 (después de la redirección del ancla)
+  const urlParams = new URLSearchParams(window.location.search);
+  const callbackTxId = urlParams.get('id');
+  const callbackTxStatus = urlParams.get('status');
+
+  if (callbackTxId && jwtToken && stellarAddress) {
+    // Si hay un ID de transacción en la URL y estamos autenticados,
+    // significa que regresamos del flujo interactivo del ancla.
+    // Mostramos directamente el componente de retiro para que monitoree la transacción.
+    currentComponent = (
+      <PuntoRedWithdraw
+        operationType={selectedOperation || "Transacción en curso"} // Puede ser nulo si se llega directamente aquí
+        stellarAddress={stellarAddress}
+        amount={amountToBridge} // Puede ser nulo
+        jwtToken={jwtToken}
+        initialTransactionId={callbackTxId}
+        initialTransactionStatus={callbackTxStatus}
+      />
+    );
+    // En este caso, el botón "Volver" es útil para reiniciar el flujo
+    showGoBackButton = true;
+  } else if (!selectedOperation) {
     currentComponent = <OperationSelector setSelectedOperation={setSelectedOperation} />;
-  } else if (!walletConnectedEVM || !stellarAddress) {
+    showGoBackButton = false; // No mostrar "Volver" en la pantalla inicial
+  } else if (!walletConnectedEVM || !stellarAddress || !jwtToken) {
     currentComponent = (
       <WalletConnect
         onEVMConnect={setWalletConnectedEVM}
-        onStellarConnect={setStellarAddress}
-        currentStellarAddress={stellarAddress}
+        onStellarAuthSuccess={(token, pk) => { // Nueva prop para manejar la autenticación Stellar
+          setJwtToken(token);
+          setStellarAddress(pk);
+          localStorage.setItem('stellarJwt', token); // Persistir JWT
+          localStorage.setItem('stellarAddress', pk); // Persistir Stellar Address
+        }}
+        currentStellarAddress={stellarAddress} // Pasar la dirección Stellar actual para mostrar
       />
     );
   } else if (!bridgeComplete) {
@@ -78,6 +123,7 @@ function App() {
         operationType={selectedOperation}
         stellarAddress={stellarAddress}
         amount={amountToBridge}
+        jwtToken={jwtToken}
       />
     );
   }
@@ -89,14 +135,48 @@ function App() {
           <Container maxW="container.md" py={10}>
             <VStack spacing={8} align="stretch">
               <Box textAlign="center" mb={10}>
-                <Heading as="h1" size="2xl" mb={4} color="stellarBlue.600">
-                  🌟 Dispenser
-                </Heading>
+                {/* Contenedor para el logo y el título */}
+                <HStack justifyContent="center" alignItems="center" spacing={4} mb={4}>
+                  {/* Placeholder para el logo. Puedes reemplazar la URL con tu logo real */}
+                  <Image
+                    src="https://placehold.co/60x60/009ECC/ffffff?text=LOGO"
+                    alt="Dispenser Logo"
+                    boxSize="60px"
+                    borderRadius="full"
+                    fallbackSrc="https://placehold.co/60x60/009ECC/ffffff?text=LOGO" // Fallback si la imagen no carga
+                  />
+                  <Heading
+                    as="h1"
+                    size="2xl"
+                    fontSize={{ base: "3xl", md: "5xl" }} // Tamaño de fuente responsivo
+                    bgGradient="linear(to-r, stellarBlue.500, stellarBlue.700)" // Degradado para más vida
+                    bgClip="text" // Aplica el degradado al texto
+                    fontWeight="extrabold" // Hace el texto más grueso
+                  >
+                    🌟 Dispenser
+                  </Heading>
+                </HStack>
                 <Text fontSize="xl" color="gray.700" maxW="lg" mx="auto">
                   Tu puerta de entrada a servicios financieros sin fronteras en Colombia.
                 </Text>
               </Box>
+
+              {/* Botón "Volver" - visible solo cuando showGoBackButton es true */}
+              {showGoBackButton && (
+                <Button
+                  onClick={handleGoBack}
+                  variant="outline"
+                  colorScheme="gray"
+                  alignSelf="flex-start"
+                  mb={4}
+                  leftIcon={<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-arrow-left"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>}
+                >
+                  Volver
+                </Button>
+              )}
+
               {currentComponent}
+
               <Box textAlign="center" mt={12} py={4} bg="gray.50" borderRadius="md">
                 <Text fontSize="sm" color="gray.600">
                   Construido para el {" "}
