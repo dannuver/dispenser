@@ -2,11 +2,11 @@
 import React, { useState, useEffect } from 'react';
 import { ChakraProvider, extendTheme, Box, Container, VStack, Heading, Text, Link, HStack, Image, Button } from '@chakra-ui/react';
 // Rutas de importación corregidas para cuando App.jsx está en src/ (estructura estándar)
-import OperationSelector from './components/OperationSelector'; // Ahora sí necesita './components/'
-import WalletConnect from './components/WalletConnect'; // Ahora sí necesita './components/'
-import AxelarBridge from './components/AxelarBridge'; // Ahora sí necesita './components/'
-import PuntoRedWithdraw from './components/PuntoRedWithdraw'; // Ahora sí necesita './components/'
-import StellarAuth from './components/StellarAuth'; // Ahora sí necesita './components/'
+import OperationSelector from './components/OperationSelector';
+import WalletConnect from './components/WalletConnect';
+import AxelarBridge from './components/AxelarBridge';
+import PuntoRedWithdraw from './components/PuntoRedWithdraw';
+import StellarAuth from './components/StellarAuth'; // Asegúrate de que esta importación sea correcta
 
 import { WagmiProvider } from 'wagmi';
 import { polygon, mainnet, arbitrum } from 'wagmi/chains';
@@ -46,7 +46,7 @@ const theme = extendTheme({
 
 function App() {
   const [selectedOperation, setSelectedOperation] = useState(null);
-  const [walletConnectedEVM, setWalletConnectedEVM] = useState(false);
+  const [walletConnectedEVM, setWalletConnectedEVM] = useState(false); // Mantener para futura re-activación si es necesario
   // Estados para la dirección Stellar y el JWT, intentando cargar desde localStorage
   const [stellarAddress, setStellarAddress] = useState(localStorage.getItem('stellarAddress') || null);
   const [jwtToken, setJwtToken] = useState(localStorage.getItem('stellarJwt') || null);
@@ -56,8 +56,7 @@ function App() {
   // Función para resetear todos los estados y volver a la selección de operación
   const handleGoBack = () => {
     setSelectedOperation(null);
-    setWalletConnectedEVM(false);
-    // No reseteamos stellarAddress y jwtToken aquí, ya que la autenticación es persistente
+    setWalletConnectedEVM(false); // Resetear EVM también si se oculta
     setAmountToBridge(null);
     setBridgeComplete(false);
     // Limpiar parámetros de URL si estamos volviendo de un callback de SEP-24
@@ -74,10 +73,11 @@ function App() {
   const callbackTxId = urlParams.get('id');
   const callbackTxStatus = urlParams.get('status');
 
+  // --- Lógica del Flujo de la Aplicación ---
   if (callbackTxId && jwtToken && stellarAddress) {
+    // Caso 1: Regreso de un flujo interactivo de SEP-24 del ancla
     // Si hay un ID de transacción en la URL y estamos autenticados,
-    // significa que regresamos del flujo interactivo del ancla.
-    // Mostramos directamente el componente de retiro para que monitoree la transacción.
+    // mostramos directamente el componente de retiro para que monitoree la transacción.
     currentComponent = (
       <PuntoRedWithdraw
         operationType={selectedOperation || "Transacción en curso"} // Puede ser nulo si se llega directamente aquí
@@ -88,25 +88,31 @@ function App() {
         initialTransactionStatus={callbackTxStatus}
       />
     );
-    // En este caso, el botón "Volver" es útil para reiniciar el flujo
     showGoBackButton = true;
-  } else if (!selectedOperation) {
-    currentComponent = <OperationSelector setSelectedOperation={setSelectedOperation} />;
-    showGoBackButton = false; // No mostrar "Volver" en la pantalla inicial
-  } else if (!walletConnectedEVM || !stellarAddress || !jwtToken) {
+  } else if (!stellarAddress || !jwtToken) {
+    // Caso 2: El usuario aún no está autenticado con la wallet Stellar
+    // Mostramos el componente de conexión/autenticación de wallets.
     currentComponent = (
       <WalletConnect
-        onEVMConnect={setWalletConnectedEVM}
-        onStellarAuthSuccess={(token, pk) => { // Nueva prop para manejar la autenticación Stellar
+        onEVMConnect={setWalletConnectedEVM} // Mantener para futura re-activación de EVM
+        onStellarAuthSuccess={(token, pk) => {
           setJwtToken(token);
           setStellarAddress(pk);
-          localStorage.setItem('stellarJwt', token); // Persistir JWT
-          localStorage.setItem('stellarAddress', pk); // Persistir Stellar Address
+          localStorage.setItem('stellarJwt', token);
+          localStorage.setItem('stellarAddress', pk);
         }}
-        currentStellarAddress={stellarAddress} // Pasar la dirección Stellar actual para mostrar
+        currentStellarAddress={stellarAddress}
       />
     );
+    showGoBackButton = false; // No mostrar "Volver" en la pantalla de conexión inicial
+  } else if (!selectedOperation) {
+    // Caso 3: Autenticación Stellar completa, pero no se ha seleccionado una operación
+    // Mostramos las opciones de operación de PuntoRed.
+    currentComponent = <OperationSelector setSelectedOperation={setSelectedOperation} />;
+    showGoBackButton = true; // Permitir volver a la pantalla de conexión si el usuario lo desea
   } else if (!bridgeComplete) {
+    // Caso 4: Operación seleccionada, pero el puenteo de fondos no está completo (simulado)
+    // Este paso es un requisito previo para tener los fondos en Stellar.
     currentComponent = (
       <AxelarBridge
         onBridgeComplete={(amount) => {
@@ -117,7 +123,10 @@ function App() {
         stellarAddress={stellarAddress}
       />
     );
+    showGoBackButton = true;
   } else {
+    // Caso 5: Todos los pasos previos completados (autenticación, selección, puenteo)
+    // Mostramos el componente de retiro para completar la operación con el ancla.
     currentComponent = (
       <PuntoRedWithdraw
         operationType={selectedOperation}
@@ -126,6 +135,7 @@ function App() {
         jwtToken={jwtToken}
       />
     );
+    showGoBackButton = true;
   }
 
   return (
@@ -135,23 +145,21 @@ function App() {
           <Container maxW="container.md" py={10}>
             <VStack spacing={8} align="stretch">
               <Box textAlign="center" mb={10}>
-                {/* Contenedor para el logo y el título */}
                 <HStack justifyContent="center" alignItems="center" spacing={4} mb={4}>
-                  {/* Placeholder para el logo. Puedes reemplazar la URL con tu logo real */}
                   <Image
                     src="https://placehold.co/60x60/009ECC/ffffff?text=LOGO"
                     alt="Dispenser Logo"
                     boxSize="60px"
                     borderRadius="full"
-                    fallbackSrc="https://placehold.co/60x60/009ECC/ffffff?text=LOGO" // Fallback si la imagen no carga
+                    fallbackSrc="https://placehold.co/60x60/009ECC/ffffff?text=LOGO"
                   />
                   <Heading
                     as="h1"
                     size="2xl"
-                    fontSize={{ base: "3xl", md: "5xl" }} // Tamaño de fuente responsivo
-                    bgGradient="linear(to-r, stellarBlue.500, stellarBlue.700)" // Degradado para más vida
-                    bgClip="text" // Aplica el degradado al texto
-                    fontWeight="extrabold" // Hace el texto más grueso
+                    fontSize={{ base: "3xl", md: "5xl" }}
+                    bgGradient="linear(to-r, stellarBlue.500, stellarBlue.700)"
+                    bgClip="text"
+                    fontWeight="extrabold"
                   >
                     🌟 Dispenser
                   </Heading>
@@ -161,7 +169,6 @@ function App() {
                 </Text>
               </Box>
 
-              {/* Botón "Volver" - visible solo cuando showGoBackButton es true */}
               {showGoBackButton && (
                 <Button
                   onClick={handleGoBack}
