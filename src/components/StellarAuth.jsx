@@ -1,12 +1,34 @@
 // src/components/StellarAuth.jsx
-import React, { useState, useEffect, useCallback } from 'react'; // Importamos useCallback
+import React, { useState, useEffect, useCallback } from 'react';
 import { Button, VStack, Text, useToast, Spinner, Box, HStack } from '@chakra-ui/react';
 import { Networks } from 'stellar-sdk'; // Importamos Networks de stellar-sdk
+
+// Importar StellarWalletsKit y sus módulos
+import {
+  allowAllModules,
+  FREIGHTER_ID, // ID para referenciar a Freighter en StellarWalletsKit
+  StellarWalletsKit,
+} from '@creit.tech/stellar-wallets-kit';
 
 // ¡IMPORTANTE! Reemplaza con el dominio real de PuntoRed.
 // Este es el 'home_domain' del ancla, donde se aloja el archivo stellar.toml.
 const ANCHOR_HOME_DOMAIN = 'https://puntored-anchor.com'; // Ejemplo: 'https://testanchor.stellar.org'
 const STELLAR_NETWORK = Networks.TESTNET; // Cambia a Networks.PUBLIC para la red principal de Stellar
+
+// --- Configuración e inicialización de StellarWalletsKit ---
+// La red se obtiene de las variables de entorno o se hardcodea si es necesario.
+// Para un proyecto Vite, si tuvieras PUBLIC_STELLAR_NETWORK_PASSPHRASE en .env,
+// lo accederías con import.meta.env.PUBLIC_STELLAR_NETWORK_PASSPHRASE.
+const STELLAR_NETWORK_PASSPHRASE = Networks.TESTNET; // Usamos Networks.TESTNET como passphrase para el kit
+
+// Inicializar el kit fuera del componente para que persista a través de renders
+const SELECTED_WALLET_ID_KEY = "selectedWalletId";
+const kit = new StellarWalletsKit({
+  modules: allowAllModules(), // Permite todas las billeteras soportadas por el kit
+  network: STELLAR_NETWORK_PASSPHRASE,
+  // Intentamos obtener la wallet seleccionada previamente de localStorage, si no, usamos Freighter como predeterminado.
+  selectedWalletId: localStorage.getItem(SELECTED_WALLET_ID_KEY) ?? FREIGHTER_ID,
+});
 
 // Función auxiliar para obtener el stellar.toml y extraer el WEB_AUTH_ENDPOINT
 async function getWebAuthEndpoint(homeDomain) {
@@ -18,18 +40,15 @@ async function getWebAuthEndpoint(homeDomain) {
     const tomlText = await response.text();
 
     // Parsear el TOML para encontrar WEB_AUTH_ENDPOINT
-    // Esto es una simplificación; en un entorno de producción, usarías una librería TOML parser
     const webAuthEndpointMatch = tomlText.match(/WEB_AUTH_ENDPOINT\s*=\s*"(.*)"/);
     if (webAuthEndpointMatch && webAuthEndpointMatch[1]) {
       return webAuthEndpointMatch[1];
     } else {
-      // Fallback si WEB_AUTH_ENDPOINT no está en stellar.toml (no recomendado por SEP-10)
       console.warn('WEB_AUTH_ENDPOINT not found in stellar.toml. Falling back to home domain + /auth.');
       return `${homeDomain}/auth`;
     }
   } catch (error) {
     console.error('Error fetching or parsing stellar.toml:', error);
-    // Fallback en caso de error al obtener el stellar.toml
     return `${homeDomain}/auth`;
   }
 }
@@ -37,66 +56,125 @@ async function getWebAuthEndpoint(homeDomain) {
 function StellarAuth({ onAuthSuccess, currentStellarAddress }) {
   const [loading, setLoading] = useState(false);
   const [jwtToken, setJwtToken] = useState(null);
-  const [isFreighterAvailable, setIsFreighterAvailable] = useState(false);
+  const [isConnected, setIsConnected] = useState(false); // Estado para saber si alguna wallet está conectada
   const toast = useToast();
 
-  // Función para verificar la disponibilidad de Freighter
-  const checkFreighterAvailability = useCallback(() => {
-    if (typeof window.stellar !== 'undefined' && typeof window.stellar.getPublicKey === 'function') {
-      setIsFreighterAvailable(true);
-      console.log('Freighter API detectada y lista.');
-      return true;
-    } else {
-      setIsFreighterAvailable(false);
-      console.log('Freighter API no detectada o no lista.');
-      return false;
-    }
+  // Función para establecer la wallet seleccionada y guardarla en localStorage
+  const setWallet = useCallback(async (walletId) => {
+    localStorage.setItem(SELECTED_WALLET_ID_KEY, walletId);
+    await kit.setWallet(walletId);
+    setIsConnected(true);
   }, []);
 
-  // useEffect para la detección inicial y polling
+  // Función para desconectar la wallet
+  const disconnectWallet = useCallback(async () => {
+    localStorage.removeItem(SELECTED_WALLET_ID_KEY);
+    localStorage.removeItem('stellarJwt'); // Limpiar JWT también
+    localStorage.removeItem('stellarAddress'); // Limpiar dirección Stellar
+    await kit.disconnect();
+    setJwtToken(null);
+    onAuthSuccess(null, null); // Limpiar en el padre
+    setIsConnected(false);
+    toast({
+      title: 'Wallet Stellar desconectada',
+      status: 'info',
+      duration: 3000,
+      isClosable: true,
+    });
+  }, [onAuthSuccess, toast]);
+
+  // Efecto para verificar el estado de la conexión al cargar el componente
   useEffect(() => {
-    // Intentar detectar inmediatamente
-    checkFreighterAvailability();
+    const checkConnectionStatus = async () => {
+      try {
+        const storedWalletId = localStorage.getItem(SELECTED_WALLET_ID_KEY);
+        if (storedWalletId) {
+          await kit.setWallet(storedWalletId); // Intentar reestablecer la wallet
+          const { address } = await kit.getAddress(); // Obtener la dirección
+          if (address) {
+            setIsConnected(true);
+            // Reestablecer JWT y dirección en el padre si están en localStorage
+            onAuthSuccess(localStorage.getItem('stellarJwt'), address);
+          } else {
+            // Si no se puede obtener la dirección, la conexión no es válida
+            setIsConnected(false);
+            localStorage.removeItem(SELECTED_WALLET_ID_KEY);
+            localStorage.removeItem('stellarJwt');
+            localStorage.removeItem('stellarAddress');
+          }
+        }
+      } catch (error) {
+        console.error('Error al verificar conexión de wallet Stellar:', error);
+        setIsConnected(false);
+        localStorage.removeItem(SELECTED_WALLET_ID_KEY);
+        localStorage.removeItem('stellarJwt');
+        localStorage.removeItem('stellarAddress');
+      }
+    };
+    checkConnectionStatus();
+  }, [onAuthSuccess]); // Se ejecuta una vez al montar
 
-    // Polling para detectar si Freighter se activa más tarde (ej. usuario inicia sesión)
-    const interval = setInterval(checkFreighterAvailability, 1500); // Revisa cada 1.5 segundos
-
-    // Limpiar el intervalo al desmontar el componente
-    return () => clearInterval(interval);
-  }, [checkFreighterAvailability]); // Dependencia para useCallback
+  // Función para abrir el modal de conexión de StellarWalletsKit
+  const connectStellarWallet = async () => {
+    setLoading(true); // Activar loading cuando se abre el modal
+    try {
+      await kit.openModal({
+        onWalletSelected: async (option) => {
+          try {
+            await setWallet(option.id); // Establecer la wallet seleccionada
+            // Una vez que la wallet está seleccionada y conectada, procedemos a la autenticación SEP-10
+            const { address } = await kit.getAddress(); // Obtener la clave pública de la wallet conectada
+            await authenticateWithStellar(address);
+          } catch (e) {
+            console.error('Error al seleccionar wallet o autenticar:', e);
+            toast({
+              title: 'Error al conectar/autenticar',
+              description: e.message || 'No se pudo conectar o autenticar la wallet Stellar.',
+              status: 'error',
+              duration: 5000,
+              isClosable: true,
+            });
+          } finally {
+            setLoading(false); // Desactivar loading al finalizar
+          }
+          return option.id; // Retorna el ID de la wallet seleccionada
+        },
+      });
+    } catch (error) {
+      console.error('Error al abrir el modal de conexión:', error);
+      toast({
+        title: 'Error de conexión',
+        description: error.message || 'No se pudo abrir el modal de conexión de la wallet.',
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
+      setLoading(false); // Desactivar loading si falla la apertura del modal
+    }
+  };
 
   // Función para autenticar con la wallet Stellar (SEP-10)
-  const authenticateWithStellar = async () => {
-    setLoading(true);
+  const authenticateWithStellar = async (publicKey) => {
+    setLoading(true); // Mantener loading durante el proceso de autenticación SEP-10
     try {
-      // Asegurarse de que Freighter esté disponible justo antes de la llamada
-      if (!checkFreighterAvailability()) { // Llama a la función de verificación de nuevo
-        throw new Error('La extensión Freighter no está instalada o activa. Por favor, instálala, actívala y recarga la página.');
-      }
-
-      // 1. Obtener la clave pública de la wallet Stellar (Freighter)
-      const publicKey = await window.stellar.getPublicKey();
       if (!publicKey) {
-        throw new Error('No Stellar wallet connected or public key not available. Ensure Freighter is active and you are logged in.');
+        throw new Error('No Stellar public key available for authentication.');
       }
 
-      // 2. Descubrir el WEB_AUTH_ENDPOINT desde stellar.toml
       const webAuthEndpoint = await getWebAuthEndpoint(ANCHOR_HOME_DOMAIN);
       console.log('Using WEB_AUTH_ENDPOINT:', webAuthEndpoint);
 
-      // 3. Obtener la transacción de desafío (challenge transaction) del ancla (SEP-10 /auth endpoint)
       const authInfoResponse = await fetch(`${webAuthEndpoint}?account=${publicKey}`);
       if (!authInfoResponse.ok) {
         const errorText = await authInfoResponse.text();
         throw new Error(`Error fetching auth challenge: ${authInfoResponse.status} - ${errorText}`);
       }
       const authInfo = await authInfoResponse.json();
-      const challengeXDR = authInfo.transaction; // La transacción de desafío en formato XDR
+      const challengeXDR = authInfo.transaction;
 
-      // 4. Firmar la transacción de desafío con Freighter
-      const signedXDR = await window.stellar.signTransaction(challengeXDR, { network: STELLAR_NETWORK });
+      // Usar kit.signTransaction para firmar la transacción de desafío
+      const signedXDR = await kit.signTransaction(challengeXDR, STELLAR_NETWORK); // StellarWalletsKit requiere la network passphrase
 
-      // 5. Enviar la transacción firmada de vuelta al ancla para obtener el JWT
       const tokenResponse = await fetch(webAuthEndpoint, {
         method: 'POST',
         headers: {
@@ -110,12 +188,11 @@ function StellarAuth({ onAuthSuccess, currentStellarAddress }) {
         throw new Error(`Error getting JWT: ${tokenResponse.status} - ${errorText}`);
       }
       const tokenData = await tokenResponse.json();
-      const token = tokenData.token; // El JWT (JSON Web Token)
+      const token = tokenData.token;
 
       setJwtToken(token);
-      // Almacenar el JWT y la clave pública en localStorage para persistencia
       localStorage.setItem('stellarJwt', token);
-      localStorage.setItem('stellarAddress', publicKey);
+      localStorage.setItem('stellarAddress', publicKey); // Asegurar que la dirección se guarda
       onAuthSuccess(token, publicKey);
 
       toast({
@@ -136,7 +213,7 @@ function StellarAuth({ onAuthSuccess, currentStellarAddress }) {
         isClosable: true,
       });
     } finally {
-      setLoading(false);
+      setLoading(false); // Desactivar loading al finalizar la autenticación
     }
   };
 
@@ -148,46 +225,47 @@ function StellarAuth({ onAuthSuccess, currentStellarAddress }) {
           Wallet conectada: <Text as="span" fontWeight="bold">{currentStellarAddress.substring(0, 8)}...{currentStellarAddress.substring(currentStellarAddress.length - 8)}</Text>
         </Text>
       )}
-      {!isFreighterAvailable && !loading && (
-        <Text fontSize="sm" color="red.500" textAlign="center">
-          ⚠️ Extensión Freighter no detectada o no lista.
-          <br/>
-          Por favor, asegúrate de:
-          <VStack align="flex-start" mt={2} spacing={0} px={4}>
-            <Text>- Tener la extensión instalada y activa.</Text>
-            <Text>- Haber iniciado sesión en tu wallet Freighter.</Text>
-            <Text>- Haber aprobado la conexión para este sitio web.</Text>
-          </VStack>
+
+      {/* Botón para conectar/autenticar o mostrar estado de autenticado */}
+      {!jwtToken ? ( // Si no hay JWT, mostrar botón de conectar/autenticar
+        <Button
+          onClick={connectStellarWallet}
+          isLoading={loading}
+          isDisabled={loading} // Deshabilitar mientras el modal se abre o se autentica
+          colorScheme="teal"
+          size="lg"
+          width="full"
+        >
+          {loading ? (
+            <HStack>
+              <Spinner size="sm" />
+              <Text>Conectando...</Text>
+            </HStack>
+          ) : (
+            'Conectar/Autenticar Stellar Wallet'
+          )}
+        </Button>
+      ) : ( // Si ya hay JWT, mostrar que está autenticado y opción de desconectar
+        <VStack w="full">
+          <Text fontSize="md" color="green.600" fontWeight="bold">¡Autenticado con Stellar!</Text>
           <Button
-            mt={3}
-            size="sm"
-            onClick={checkFreighterAvailability}
-            variant="outline"
+            onClick={disconnectWallet}
             colorScheme="red"
+            size="md"
+            width="full"
           >
-            Reintentar Detección
+            Desconectar Stellar Wallet
           </Button>
+        </VStack>
+      )}
+
+      {jwtToken && <Text fontSize="sm" color="green.600">JWT obtenido y almacenado.</Text>}
+      {/* Mensaje de ayuda si no hay conexión y no está cargando */}
+      {!isConnected && !loading && !jwtToken && (
+        <Text fontSize="sm" color="orange.500" textAlign="center">
+          Haz clic en "Conectar/Autenticar Stellar Wallet" para elegir tu billetera (ej. Freighter).
         </Text>
       )}
-      <Button
-        onClick={authenticateWithStellar}
-        isLoading={loading}
-        // Deshabilitar si ya está autenticado O si Freighter no está disponible
-        isDisabled={(!isFreighterAvailable && !loading) || (!!jwtToken && !!currentStellarAddress && !loading)}
-        colorScheme="teal"
-        size="lg"
-        width="full"
-      >
-        {loading ? (
-          <HStack>
-            <Spinner size="sm" />
-            <Text>Autenticando...</Text>
-          </HStack>
-        ) : (
-          jwtToken ? 'Autenticado con Stellar' : 'Autenticar con Stellar Wallet'
-        )}
-      </Button>
-      {jwtToken && <Text fontSize="sm" color="green.600">JWT obtenido y almacenado.</Text>}
     </VStack>
   );
 }
