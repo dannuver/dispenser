@@ -13,6 +13,9 @@ import { polygon, mainnet, arbitrum } from 'wagmi/chains';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createConfig, http } from 'wagmi';
 
+// Importar la función de desconexión del kit
+import { disconnectStellarKitWallet } from './utils/stellarKit';
+
 const config = createConfig({
   chains: [polygon, mainnet, arbitrum],
   transports: {
@@ -66,10 +69,8 @@ function App() {
   };
 
   // Nueva función para desconectar la billetera Stellar
-  const handleStellarDisconnect = () => {
-    localStorage.removeItem('stellarJwt');
-    localStorage.removeItem('stellarAddress');
-    localStorage.removeItem('selectedWalletId'); // Limpiar también el ID de la wallet seleccionada por StellarWalletsKit
+  const handleStellarDisconnect = async () => {
+    await disconnectStellarKitWallet(); // Usar la función de utilidad
     setJwtToken(null);
     setStellarAddress(null);
     // Resetear también los estados de operación para volver a la pantalla de conexión

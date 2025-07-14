@@ -1,16 +1,26 @@
 // src/components/PuntoRedWithdraw.jsx
 import React, { useState, useEffect } from 'react';
 import { Box, Button, FormControl, FormLabel, Input, VStack, Heading, Text, useToast, Link, Spinner, Flex, Icon, HStack } from '@chakra-ui/react';
-import { FaExternalLinkAlt, FaTimesCircle, FaCheckCircle, FaWindowRestore } from 'react-icons/fa'; // Iconos para el link, errores/éxito y ventana emergente
+import { FaExternalLinkAlt, FaTimesCircle, FaCheckCircle, FaPaperPlane } from 'react-icons/fa'; // Importar FaPaperPlane para enviar pago
+import { Server, TransactionBuilder, Networks, Asset, Operation } from 'stellar-sdk'; // Importar Operation y Asset
+import { kit } from '../utils/stellarKit'; // Importamos kit desde el archivo de utilidad
 
 // ¡IMPORTANTE! Reemplaza con la URL base SEP-24 real de PuntoRed.
-// Esta URL suele ser el ANCHOR_HOME_DOMAIN + /sep24
 const ANCHOR_SEP24_URL = 'https://puntored-anchor.com/sep24'; // Ejemplo: 'https://testanchor.stellar.org/sep24'
+const STELLAR_NETWORK = Networks.TESTNET; // Asegúrate de que coincida con la red del kit
+const STELLAR_RPC_URL = 'https://horizon-testnet.stellar.org'; // URL de Horizon para enviar transacciones
+
+// ¡IMPORTANTE! Reemplaza con la clave pública REAL de la cuenta de depósito Stellar de PuntoRed.
+// Esta cuenta es a donde el usuario enviará los fondos directamente.
+// Necesitarás obtener esta dirección de la documentación de PuntoRed o contactarlos.
+const PUNTORED_DEPOSIT_ACCOUNT = 'GCV2X5Z6T62X2Q4M7U7E5Z3Z8Z3Z8Z3Z8Z3Z8Z3Z8Z3Z8Z3Z8Z3Z8Z3Z8Z3Z8Z3Z8'; // <<-- ¡PLACEHOLDER!
+
+// ¡IMPORTANTE! Reemplaza con el código del activo y el emisor si no es nativo (XLM)
+// Para USDC en Testnet, necesitarías el Asset Issuer.
+const USDC_ASSET = new Asset('USDC', 'GBEDQW4S2G37C2F34C2F34C2F34C2F34C2F34C2F34C2F34C2F34C2F34C2F34C2F34C'); // <<-- ¡PLACEHOLDER!
 
 // En una aplicación real, esta información de los campos requeridos
 // se obtendría dinámicamente del endpoint /info del ancla SEP-24.
-// Para este ejemplo, mantenemos una estructura similar a tu mock para la UI,
-// pero los datos enviados al ancla serán los del formulario.
 const MOCK_OPERATION_INFO = {
   'Retirar efectivo': {
     description: 'Retiro de efectivo en corresponsal bancario.',
@@ -40,35 +50,33 @@ const MOCK_OPERATION_INFO = {
       service_type: { type: 'text', description: 'Tipo de servicio (luz, agua, gas)', optional: true },
     }
   },
-  // Añade más tipos de operación si tu OperationSelector los tiene
+  // La opción 'Puenteo de Fondos' se maneja en App.jsx, no aquí directamente
 };
 
 
-function PuntoRedWithdraw({ operationType, stellarAddress, amount, jwtToken, initialTransactionId, initialTransactionStatus }) {
+function PuntoRedWithdraw({ operationType, stellarAddress, jwtToken, initialTransactionId, initialTransactionStatus }) {
   const [additionalFields, setAdditionalFields] = useState({});
   const [isLoading, setIsLoading] = useState(false);
   const [transactionId, setTransactionId] = useState(initialTransactionId || null);
   const [transactionStatus, setTransactionStatus] = useState(initialTransactionStatus || null);
+  const [paymentAmount, setPaymentAmount] = useState(''); // Nuevo estado para el monto del pago
   const toast = useToast();
 
-  // Usamos el mock para la UI, pero los datos reales se enviarán al ancla
   const currentOperationInfo = MOCK_OPERATION_INFO[operationType];
 
-  // Limpiar campos adicionales cuando cambia el tipo de operación
+  // Limpiar campos adicionales y estado de transacción al cambiar el tipo de operación
   useEffect(() => {
     setAdditionalFields({});
-    // Limpiar el ID y estado de la transacción si la operación cambia
     setTransactionId(null);
     setTransactionStatus(null);
+    setPaymentAmount(''); // También limpiar el monto
   }, [operationType]);
 
-  // Efecto para manejar el callback de la URL y monitorear la transacción
+  // Efecto para manejar el callback de la URL y monitorear la transacción (SEP-24)
   useEffect(() => {
-    // Si hay un ID de transacción inicial (desde el callback de la URL)
-    // y tenemos un JWT y dirección Stellar, iniciamos el polling.
     if (initialTransactionId && jwtToken && stellarAddress && !transactionId) {
       setTransactionId(initialTransactionId);
-      setTransactionStatus(initialTransactionStatus || 'pending'); // Establecer un estado inicial si no viene
+      setTransactionStatus(initialTransactionStatus || 'pending');
 
       const pollTransactionStatus = async () => {
         setIsLoading(true);
@@ -88,12 +96,11 @@ function PuntoRedWithdraw({ operationType, stellarAddress, amount, jwtToken, ini
           if (currentStatus === 'completed') {
             toast({
               title: 'Transacción completada',
-              description: `Retiro de ${amount || 'monto desconocido'} USDC exitoso.`,
+              description: `Operación de ${operationType} exitosa.`,
               status: 'success',
               duration: 9000,
               isClosable: true,
             });
-            // Aquí podrías resetear el flujo de la app o mostrar un resumen final
           } else if (currentStatus === 'failed' || currentStatus === 'error') {
             toast({
               title: 'Transacción fallida',
@@ -103,8 +110,7 @@ function PuntoRedWithdraw({ operationType, stellarAddress, amount, jwtToken, ini
               isClosable: true,
             });
           } else {
-            // Seguir haciendo polling si el estado es 'pending', 'processing', 'waiting_for_user_transfer_start', etc.
-            setTimeout(pollTransactionStatus, 5000); // Poll cada 5 segundos
+            setTimeout(pollTransactionStatus, 5000);
           }
         } catch (error) {
           console.error('Error durante el polling de transacción:', error);
@@ -121,7 +127,7 @@ function PuntoRedWithdraw({ operationType, stellarAddress, amount, jwtToken, ini
       };
       pollTransactionStatus();
     }
-  }, [initialTransactionId, initialTransactionStatus, jwtToken, stellarAddress, amount, toast, transactionId]); // Dependencias para el useEffect
+  }, [initialTransactionId, initialTransactionStatus, jwtToken, stellarAddress, operationType, toast, transactionId]);
 
   if (!currentOperationInfo) {
     return (
@@ -138,11 +144,12 @@ function PuntoRedWithdraw({ operationType, stellarAddress, amount, jwtToken, ini
     setAdditionalFields(prev => ({ ...prev, [fieldName]: value }));
   };
 
-  const handleStartPuntoRedFlow = async () => {
-    if (!stellarAddress || !amount || !jwtToken) {
+  // Nueva función para manejar el envío directo del pago Stellar
+  const handleSendStellarPayment = async () => {
+    if (!stellarAddress || !jwtToken || !paymentAmount || isNaN(parseFloat(paymentAmount)) || parseFloat(paymentAmount) <= 0) {
       toast({
         title: 'Error de Datos',
-        description: 'Faltan datos clave (dirección Stellar, monto o token de autenticación). Por favor, reinicia el flujo y asegúrate de autenticarte.',
+        description: 'Faltan datos clave (dirección Stellar, token, o monto de pago inválido).',
         status: 'error',
         duration: 5000,
         isClosable: true,
@@ -151,7 +158,7 @@ function PuntoRedWithdraw({ operationType, stellarAddress, amount, jwtToken, ini
       return;
     }
 
-    // Validación de campos obligatorios usando las claves de additionalFields
+    // Validación de campos obligatorios del formulario
     const missingFields = Object.entries(currentOperationInfo.fields)
       .filter(([fieldName, fieldInfo]) => !fieldInfo.optional && (!additionalFields[fieldName] || additionalFields[fieldName].trim() === ''))
       .map(([, fieldInfo]) => fieldInfo.description);
@@ -169,108 +176,65 @@ function PuntoRedWithdraw({ operationType, stellarAddress, amount, jwtToken, ini
     }
 
     setIsLoading(true);
-
     try {
-      // La URL de callback a la que el ancla redirigirá después de la interacción
-      // Usamos la misma ruta actual para que App.jsx pueda capturar los parámetros de la URL
-      const callbackUrl = window.location.origin + window.location.pathname;
+      const server = new Server(STELLAR_RPC_URL);
+      const sourceAccount = await server.loadAccount(stellarAddress);
 
-      // Construir los campos para el cuerpo de la solicitud POST
-      const requestBodyFields = {
-        asset_code: 'USDC', // O el activo que estés usando
-        account: stellarAddress,
-        type: operationType, // El tipo de operación que el ancla espera
-        amount: amount,
-        // Incluir los campos adicionales del formulario
-        ...additionalFields,
-        // Otros campos opcionales que el ancla pueda requerir
-        // lang: 'es',
-        // customer_id: '...', // Si tienes un ID de cliente para el ancla
-        // email: '...',
-      };
-
-      console.log('Initiating withdraw with fields:', requestBodyFields);
-
-      const response = await fetch(`${ANCHOR_SEP24_URL}/withdraw`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${jwtToken}` // Enviar el JWT en la cabecera de autorización
-        },
-        body: JSON.stringify({
-          ...requestBodyFields,
-          // El callback postMessage es para aplicaciones de cliente puro
-          // Si tu app tiene un backend, usarías una URL de callback normal
-          callback: 'postMessage', // Según la documentación de BasicPay
-        }),
+      // Crear la operación de pago
+      const paymentOperation = Operation.payment({
+        destination: PUNTORED_DEPOSIT_ACCOUNT, // Cuenta de depósito del ancla
+        asset: USDC_ASSET, // El activo a enviar (USDC)
+        amount: paymentAmount.toString(), // Monto del input
+        // memo: TransactionBuilder.textMemo('pago_dispenser_ref'), // Opcional: un memo para la transacción
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(`Error al iniciar retiro: ${errorData.error || response.statusText}`);
-      }
+      // Construir la transacción
+      const transaction = new TransactionBuilder(sourceAccount, {
+        fee: await server.fetchBaseFee(), // Obtener el fee actual de la red
+        networkPassphrase: STELLAR_NETWORK,
+      })
+        .addOperation(paymentOperation)
+        .setTimeout(30) // Tiempo de espera en segundos
+        .build();
 
-      const data = await response.json();
-      const interactiveUrl = data.url; // URL a la que redirigir al usuario para completar la transacción
+      console.log('Transacción a firmar (XDR):', transaction.toXDR());
 
-      // Abrir la ventana emergente y escuchar el callback postMessage
-      const popup = window.open(interactiveUrl, "bpaTransfer24Window", "width=800,height=600,resizable=yes,scrollbars=yes");
+      // Firmar la transacción con StellarWalletsKit
+      const signedXDR = await kit.signTransaction(transaction.toXDR(), STELLAR_NETWORK);
 
-      // Escuchar el mensaje del popup (callback postMessage)
-      const messageListener = async (event) => {
-        // Asegúrate de que el mensaje provenga de la URL esperada del ancla
-        // Es crucial validar event.origin para seguridad
-        if (event.origin !== new URL(ANCHOR_SEP24_URL).origin) {
-          console.warn('Mensaje recibido de origen desconocido:', event.origin);
-          return;
-        }
+      // Enviar la transacción firmada a Horizon
+      const response = await server.submitTransaction(signedXDR);
 
-        if (event.data && event.data.transaction && event.data.transaction.id) {
-          const newTxId = event.data.transaction.id;
-          const newTxStatus = event.data.transaction.status; // También puede venir el estado inicial
-
-          setTransactionId(newTxId);
-          setTransactionStatus(newTxStatus);
-
-          // Limpiar la URL de la ventana principal si se regresa con parámetros
-          // Esto es importante para evitar que al recargar la página, se intente procesar
-          // el mismo callback ID nuevamente.
-          if (window.location.search) {
-            window.history.replaceState({}, document.title, window.location.pathname);
-          }
-
-          toast({
-            title: 'Transacción iniciada',
-            description: `ID: ${newTxId}. Monitoreando estado...`,
-            status: 'info',
-            duration: 5000,
-            isClosable: true,
-          });
-
-          // El useEffect de polling ya se encargará de esto al cambiar transactionId
-        }
-
-        // Cerrar la ventana emergente
-        popup?.close();
-        window.removeEventListener('message', messageListener); // Limpiar el listener para evitar duplicados
-      };
-
-      window.addEventListener('message', messageListener);
+      console.log('Transacción enviada:', response);
+      setTransactionId(response.hash);
+      setTransactionStatus('completed'); // Asumimos completado si se envió a la red
 
       toast({
-        title: 'Ventana de PuntoRed abierta',
-        description: 'Por favor, completa los detalles en la ventana emergente.',
-        status: 'info',
-        duration: 7000,
+        title: 'Pago Stellar Enviado',
+        description: `Transacción ${response.hash.substring(0, 10)}... enviada a la red Stellar.`,
+        status: 'success',
+        duration: 9000,
         isClosable: true,
-        position: 'top',
       });
+
+      // Opcional: Después de enviar el pago, podrías redirigir al flujo interactivo del ancla
+      // para que el usuario confirme el depósito o complete KYC si es necesario.
+      // Esto dependería de cómo PuntoRed maneje los depósitos directos.
+      // const callbackUrl = window.location.origin + window.location.pathname;
+      // const interactiveUrlResponse = await fetch(`${ANCHOR_SEP24_URL}/deposit`, {
+      //   method: 'POST',
+      //   headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${jwtToken}` },
+      //   body: JSON.stringify({ asset_code: 'USDC', amount: paymentAmount, account: stellarAddress, callback: 'postMessage', ...additionalFields }),
+      // });
+      // const interactiveData = await interactiveUrlResponse.json();
+      // window.open(interactiveData.url, "bpaTransfer24Window", "width=800,height=600,resizable=yes,scrollbars=yes");
 
     } catch (error) {
-      console.error('Error en el retiro:', error);
+      console.error('Error al enviar pago Stellar:', error);
+      setTransactionStatus('failed');
       toast({
-        title: 'Error en el retiro',
-        description: error.message || 'No se pudo iniciar la operación de retiro. Verifica la autenticación y los detalles.',
+        title: 'Error al enviar pago',
+        description: error.message || 'No se pudo firmar y enviar la transacción Stellar.',
         status: 'error',
         duration: 9000,
         isClosable: true,
@@ -281,17 +245,33 @@ function PuntoRedWithdraw({ operationType, stellarAddress, amount, jwtToken, ini
   };
 
   // Determinar si el botón debe estar deshabilitado
-  const isButtonDisabled = isLoading || !stellarAddress || !amount || !jwtToken ||
+  const isButtonDisabled = isLoading || !stellarAddress || !jwtToken ||
+    !paymentAmount || isNaN(parseFloat(paymentAmount)) || parseFloat(paymentAmount) <= 0 ||
     (currentOperationInfo && Object.entries(currentOperationInfo.fields).some(([fieldName, fieldInfo]) => !fieldInfo.optional && (!additionalFields[fieldName] || additionalFields[fieldName].trim() === '')));
 
   return (
     <VStack spacing={6} p={6} shadow="lg" borderWidth="1px" borderRadius="xl" width="100%" maxWidth="md" mx="auto" bg="white">
-      <Heading as="h3" size="lg" mb={4} color="stellarBlue.700">Paso Final: Completa tu operación en PuntoRed</Heading>
+      <Heading as="h3" size="lg" mb={4} color="stellarBlue.700">Paso Final: Realiza tu Pago</Heading>
       <Text fontSize="md" color="gray.600">
-        Has elegido "{currentOperationInfo.description}". Usarás {amount} USDC desde tu wallet Stellar.
+        Has elegido "{currentOperationInfo.description}". Enviarás USDC desde tu wallet Stellar.
       </Text>
+
+      {/* Input para el monto a pagar */}
+      <FormControl id="payment-amount" isRequired>
+        <FormLabel fontSize="md" fontWeight="semibold">Monto a Pagar (USDC)</FormLabel>
+        <Input
+          type="number"
+          value={paymentAmount}
+          onChange={(e) => setPaymentAmount(e.target.value)}
+          placeholder="Ej: 100.00"
+          isDisabled={isLoading}
+          size="lg"
+          borderRadius="lg"
+        />
+      </FormControl>
+
       <Text fontSize="sm" color="gray.600">
-        Por favor, ingresa los detalles adicionales requeridos por PuntoRed **para iniciar el flujo**:
+        Por favor, ingresa los detalles adicionales requeridos por PuntoRed:
       </Text>
 
       {currentOperationInfo && Object.entries(currentOperationInfo.fields).map(([fieldName, fieldInfo]) => (
@@ -312,15 +292,14 @@ function PuntoRedWithdraw({ operationType, stellarAddress, amount, jwtToken, ini
       <Button
         colorScheme="green"
         size="lg"
-        onClick={handleStartPuntoRedFlow}
+        onClick={handleSendStellarPayment} // Nueva función para el pago directo
         isDisabled={isButtonDisabled}
-        isLoading={isLoading && !transactionId} // Solo mostrar loading si no hay ID de transacción aún
-        loadingText="Abriendo PuntoRed..."
+        isLoading={isLoading}
+        loadingText="Firmando y Enviando..."
         width="100%" py={6} borderRadius="lg" boxShadow="md" _hover={{ boxShadow: "lg" }}
-        leftIcon={<Icon as={FaExternalLinkAlt} />} // Icono para indicar redirección
+        leftIcon={<Icon as={FaPaperPlane} />} // Icono de enviar
       >
-        {isLoading && !transactionId ? <Spinner size="sm" mr={2} /> : null}
-        Ir a PuntoRed para completar
+        Firmar y Enviar Pago Stellar
       </Button>
 
       {transactionId && (
@@ -340,17 +319,20 @@ function PuntoRedWithdraw({ operationType, stellarAddress, amount, jwtToken, ini
           {transactionStatus === 'completed' && (
             <HStack mt={2} color="green.600">
               <Icon as={FaCheckCircle} />
-              <Text>¡Retiro completado con éxito!</Text>
+              <Text>¡Pago completado con éxito!</Text>
             </HStack>
           )}
           {transactionStatus === 'failed' || transactionStatus === 'error' ? (
             <HStack mt={2} color="red.600">
               <Icon as={FaTimesCircle} />
-              <Text>El retiro ha fallado. Por favor, inténtalo de nuevo.</Text>
+              <Text>El pago ha fallado. Por favor, inténtalo de nuevo.</Text>
             </HStack>
           ) : null}
+          <Text fontSize="sm" color="gray.500" mt={2}>
+            *Este pago se ha enviado directamente a la red Stellar.
+          </Text>
           {/* En un entorno real, aquí podrías mostrar un enlace a la transacción en un explorador de Stellar */}
-          {/* <ChakraLink href={`https://stellar.expert/explorer/${STELLAR_NETWORK.toLowerCase()}/tx/${transactionId}`} isExternal color="stellarBlue.500">
+          {/* <Link href={`https://stellar.expert/explorer/${STELLAR_NETWORK.toLowerCase()}/tx/${transactionId}`} isExternal color="stellarBlue.500">
             Ver en Stellar Explorer
           </ChakraLink> */}
         </Box>
@@ -358,7 +340,7 @@ function PuntoRedWithdraw({ operationType, stellarAddress, amount, jwtToken, ini
 
       <Flex mt={4} justifyContent="center" alignItems="center">
         <Text fontSize="sm" color="gray.500" mr={2}>
-          *Se abrirá una ventana emergente donde PuntoRed gestionará los detalles finales y el pago.
+          *Este es un pago directo. La confirmación final por parte de PuntoRed puede requerir pasos adicionales.
         </Text>
         <Link href="https://developers.stellar.org/docs/integrate/sep/sep-0024" isExternal fontSize="sm" color="blue.500" display="flex" alignItems="center">
           Más sobre SEP-24 <Icon as={FaExternalLinkAlt} ml={1} w={3} h={3} />
